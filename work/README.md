@@ -6,7 +6,7 @@ report. The rest of the repo is the shared reference; this folder is yours.
 ## Rules of the road
 
 1. **Copy, don't edit.** Need to change the pipeline? Copy the script here
-   (e.g. `work/scripts/03_train_model_v2.py`) or adjust the feature lists in
+   (e.g. `work/scripts/03_train_model_v2.py`) or adjust the feature lists in 
    `scripts/ml_utils.py`. The reference pipeline in `scripts/` stays pristine — it's the
    baseline you compare against, and reviewers expect to find it unchanged.
 2. **No datasets in git.** CSVs inside `work/` are gitignored, and CI fails if any dataset
