@@ -1,0 +1,5 @@
+rank,action,reason_code,confidence
+1,Prioritize for immediate review,RC1,High
+2,Review manually before acting,RC2,Medium
+3,Deprioritize for now,RC3,Low
+4,Monitor and revisit later,RC4,Watchlist
