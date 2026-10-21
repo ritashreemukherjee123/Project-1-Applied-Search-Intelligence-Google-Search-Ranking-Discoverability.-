@@ -1,12 +1,10 @@
 # Capstone Report — <your lane>
 
 - **Author:** Ritashree Mukherjee
-- **Lane:** 
-- **Repo:**
-- **Date:**
-
-> Copy this file to `work/capstone_report.md` and fill it in as you build. The eight
-> sections mirror the Pass / Needs-Work rubric axes, so nothing here is optional.
+- **Lane:** Refresh / Content Opportunity Scoring
+- **Repo:** Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability
+- **Date:** 25th October, 2026
+  
 
 ## 1. Problem framing
 
