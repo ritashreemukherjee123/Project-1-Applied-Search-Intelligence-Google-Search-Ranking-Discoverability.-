@@ -1,4 +1,0 @@
-metric,baseline,model
-Precision@50,0.24,0.74
-AUC,0.52,0.8
-Lift over baseline,1.0,3.1
