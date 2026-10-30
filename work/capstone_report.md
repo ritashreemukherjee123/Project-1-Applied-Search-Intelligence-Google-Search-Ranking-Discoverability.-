@@ -44,10 +44,11 @@ Date-proxy check: see below. This was the most important finding.
 
 Date-proxy artifact (negative result). The first clean-looking model scored AUC about 0.92. Permutation importance showed one feature, active_days_90d, carrying nearly all of it (about 0.36 AUC drop, versus less than 0.01 for the next features). That column mostly encodes which as-of date a row comes from, and the label base rate depends on the date:
 
-**as_of_date**	**rows**	**label base rate**
-  2026-06-01	   17,992	     0.065
-  2026-06-15	   62,550	     0.585
-  2026-06-29	   76,236	     0.990
+| as_of_date | rows | label base rate |
+| --- | ---: | ---: |
+| 2026-06-01 | 17,992 | 0.065 |
+| 2026-06-15 | 62,550 | 0.585 |
+| 2026-06-29 | 76,236 | 0.990 |
 
 The sample starts on 06-01, so the 06-01 row has almost no usable prior window and the 06-29 row has only one future day. active_days_90d has pooled AUC 0.881 but only 0.50–0.54 within a single date. Fix: model one as-of date (2026-06-15) with a rate-based label.
 
@@ -55,9 +56,11 @@ The sample starts on 06-01, so the 06-01 row has almost no usable prior window a
 
 **Rule (W04).** Score = number of flags fired:
 
-low visibility: impressions_last30 < 500
-impression decline: impressions_last30 / impressions_prev30 < 0.80
-stale: content_age_days_at_as_of ≥ 180
+| Flag | Condition |
+| --- | --- |
+| low visibility | impressions_last30 < 500 |
+| impression decline | impressions_last30 / impressions_prev30 < 0.80 |
+| stale | content_age_days_at_as_of ≥ 180 |
 
 Ties are broken by lowest impressions. Reason codes: reason_low_visibility, reason_impression_decline, reason_stale.
 
@@ -106,13 +109,14 @@ The grouped split removes most of the apparent lift. Under it the forest is abou
 
 Models vs baselines, same rows and folds (W05, pooled out-of-fold, base rate 0.49).
 
-Score	                                       AUC	P@20	P@50	P@100
-Random (base rate)	                        0.500	0.49	0.49	0.49
-Baseline rule (tie-break)	                  0.570	0.65	0.70	0.64
-Baseline rule (no tie-break)	              0.521	0.70	0.70	0.56
-Single feature -impressions_last30	        0.595	0.70	0.64	0.63
-Logistic Regression                       	0.518	0.80	0.70	0.66
-Random Forest	                              0.520	0.60	0.60	0.58
+| Score | AUC | P@20 | P@50 | P@100 |
+| --- | ---: | ---: | ---: | ---: |
+| Random (base rate) | 0.500 | 0.49 | 0.49 | 0.49 |
+| Baseline rule (tie-break) | 0.570 | 0.65 | 0.70 | 0.64 |
+| Baseline rule (no tie-break) | 0.521 | 0.70 | 0.70 | 0.56 |
+| Single feature -impressions_last30 | 0.595 | 0.70 | 0.64 | 0.63 |
+| Logistic Regression | 0.518 | 0.80 | 0.70 | 0.66 |
+| Random Forest | 0.520 | 0.60 | 0.60 | 0.58 |
 
 Standard error of P@100 at p ≈ 0.6 is about 0.05, so the P@K differences between rows are within noise.
 
@@ -120,10 +124,10 @@ Per-fold vs pooled AUC. Random Forest per-fold AUC is 0.55–0.66 (mean about 0.
 
 Error analysis (Random Forest, 2026-06-15).
 
-High-click pages are where the model is worst. AUC by clicks_last30 bucket is 0.51 (10–20), 0.49 (20–50), 0.39 (50–200) and 0.31 (>200). This is consistent with regression to the mean: pages with unusually many recent clicks tend to fall back.
-Poor-position pages are under-predicted. For average position 12–20 the actual decline rate is 0.70 and the mean prediction is 0.55. For position > 20 it is 0.72 vs 0.49.
-Confident misses are young pages (27–38 days old) with strong positions (about 2.5–5.8) that nonetheless declined. Confident false alarms are pages around position 11–12 that held up.
-
+- High-click pages are where the model is worst. AUC by clicks_last30 bucket is 0.51 (10–20), 0.49 (20–50), 0.39 (50–200), and 0.31 (>200). This is consistent with regression to the mean: pages with unusually many recent clicks tend to fall back.
+- Poor-position pages are under-predicted. For average position 12–20, the actual decline rate is 0.70 and the mean prediction is 0.55. For position > 20, it is 0.72 vs 0.49.
+- Confident misses are young pages (27–38 days old) with strong positions (about 2.5–5.8) that nonetheless declined.
+- Confident false alarms are pages around position 11–12 that held up.
 ## 6. Interpretation
 
 
