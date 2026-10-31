@@ -192,7 +192,7 @@ Re-test the position rule against the best simple one-feature rule on that split
 
 **Environment.** Python 3.13.16, scikit-learn 1.6.1, pandas 2.2.3, plus duckdb, huggingface_hub, pyarrow, matplotlib.
 
-**Data access.** The warehouse is read through DuckDB from hf://datasets/FlyRank/internship-warehouse. Provide your token as a Colab Secret named HF_TOKEN (or the HF_TOKEN environment variable). Never paste it into a notebook.
+**Data credits.** The warehouse is read through DuckDB from hf://datasets/FlyRank/internship-warehouse. Provide your token as a Colab Secret named HF_TOKEN (or the HF_TOKEN environment variable). Never paste it into a notebook.
 
 **Seeds.** SEED = 0 everywhere (random_state=0, GroupKFold is deterministic, permutation importance random_state=0).
 
