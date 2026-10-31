@@ -95,59 +95,109 @@ Known redundancy. At 2026-06-15, impressions_90d == impressions_last30 for more 
 
 ## 5. Evaluation
 
-Split. One as-of date (2026-06-15) with 5-fold GroupKFold by client_hash_id. Pages from the same client share traffic patterns, so a random split lets the model learn the client.
+**Split.** One as-of date (2026-06-15), 5-fold GroupKFold by client_hash_id, fold assignments shared by every method. Pages from one client share traffic patterns, so a random split would let the model learn the client.
 
-Why not time-aware. Only three as-of dates exist: 06-01 has no prior window and 06-29 has no future window. A time-aware split with a 30-day embargo needs the full daily table (Section 8).
+**Why not time-aware.** Only three as-of dates exist. 06-01 has no prior window and 06-29 has no future window. A time-aware split with an embargo needs the full daily table .
 
-Random vs grouped (W06, Random Forest).
-
-Split	Model AUC (mean ± sd)	Impressions-rule AUC	Model top-5% precision	Base rate
-Random 5-fold	0.700 ± 0.014	0.583	0.890	0.529
-Grouped by client	0.588 ± 0.036	0.584	0.681	0.529
-
-The grouped split removes most of the apparent lift. Under it the forest is about equal to a one-feature rule.
-
-Models vs baselines, same rows and folds (W05, pooled out-of-fold, base rate 0.49).
+Models vs baselines, same rows and folds (pooled out-of-fold, base rate 0.49).
 
 | Score | AUC | P@20 | P@50 | P@100 |
 | --- | ---: | ---: | ---: | ---: |
 | Random (base rate) | 0.500 | 0.49 | 0.49 | 0.49 |
-| Baseline rule (tie-break) | 0.570 | 0.65 | 0.70 | 0.64 |
+| Baseline rule (tie-break: low impressions) | 0.570 | 0.65 | 0.70 | 0.64 |
 | Baseline rule (no tie-break) | 0.521 | 0.70 | 0.70 | 0.56 |
 | Single feature -impressions_last30 | 0.595 | 0.70 | 0.64 | 0.63 |
 | Logistic Regression | 0.518 | 0.80 | 0.70 | 0.66 |
 | Random Forest | 0.520 | 0.60 | 0.60 | 0.58 |
 
-Standard error of P@100 at p ≈ 0.6 is about 0.05, so the P@K differences between rows are within noise.
+The standard error of P@100 at p ≈ 0.6 is about 0.049, so the P@K differences between rows are within noise. All methods beat the 0.49 base rate at the top of the list except the forest at P@50 and P@100, which is only a few points above it.
 
-Per-fold vs pooled AUC. Random Forest per-fold AUC is 0.55–0.66 (mean about 0.60). Pooled out-of-fold AUC is 0.52 because score levels differ between folds. Both are reported. The W05 and W06 numbers differ partly for this reason, and partly because the feature table was rebuilt between them (45 vs 43 features, base rate 0.49 vs 0.529).
+| Model | Fold 1 | Fold 2 | Fold 3 | Fold 4 | Fold 5 | Mean |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Random Forest | 0.552 | 0.559 | 0.655 | 0.593 | 0.620 | 0.596 |
+| Logistic Regression | 0.554 | 0.540 | 0.633 | 0.596 | 0.572 | 0.579 |
 
-Error analysis (Random Forest, 2026-06-15).
+Per-fold AUCs are around 0.55–0.66, but pooled out-of-fold AUC is only 0.52. The score scale differs between folds, so pooling mixes folds that are individually informative. The honest summary is "weak discrimination, roughly 0.52–0.60 depending on how it is measured". The single feature -impressions_last30 (pooled AUC 0.595) is as good as or better than either model on this metric.
 
-- High-click pages are where the model is worst. AUC by clicks_last30 bucket is 0.51 (10–20), 0.49 (20–50), 0.39 (50–200), and 0.31 (>200). This is consistent with regression to the mean: pages with unusually many recent clicks tend to fall back.
-- Poor-position pages are under-predicted. For average position 12–20, the actual decline rate is 0.70 and the mean prediction is 0.55. For position > 20, it is 0.72 vs 0.49.
-- Confident misses are young pages (27–38 days old) with strong positions (about 2.5–5.8) that nonetheless declined.
-- Confident false alarms are pages around position 11–12 that held up.
+Error analysis (Random Forest, out-of-fold, 2026-06-15).
+
+By clicks_last30 bucket:
+
+| Bucket | n | actual decline | mean predicted | AUC |
+| --- | ---: | ---: | ---: | ---: |
+| 10–20 | 6,148 | 0.524 | 0.505 | 0.512 |
+| 20–50 | 3,187 | 0.468 | 0.456 | 0.494 |
+| 50–200 | 1,006 | 0.365 | 0.395 | 0.387 |
+| > 200 | 95 | 0.337 | 0.395 | 0.312 |
+
+By avg_position_last30:
+
+| Bucket | n | actual decline | mean predicted | AUC |
+| --- | ---: | ---: | ---: | ---: |
+| 0–3 | 347 | 0.349 | 0.432 | 0.586 |
+| 3–7 | 5,988 | 0.421 | 0.451 | 0.510 |
+| 7–12 | 2,703 | 0.549 | 0.518 | 0.439 |
+| 12–20 | 904 | 0.701 | 0.553 | 0.424 |
+| 20–100 | 494 | 0.715 | 0.489 | 0.443 |
+
+The model is worse than chance inside the high-click buckets (AUC below 0.5), and inside the poor-position buckets it under-predicts decline (0.70 actual vs 0.55 predicted at positions 12–20).
+Confident misses were young pages (27–38 days old) with good positions (about 2.5–5.8) that still declined. Confident false alarms were pages around position 11–12 that held up.
+Mean-reversion check: inside the 50–200 and >200 click buckets, raw clicks_last30 has AUC 0.494 and 0.509 for the label, so there is no clear within-bucket signal either way.
+
 ## 6. Interpretation
 
+**What the model leans on.** Permutation importance (held-out folds, AUC drop): avg_position_last30 0.034, impressions_last30 0.018, impressions_90d 0.017 (a near-duplicate of the previous column), ga4_sessions_last30 0.006, ctr_last30 0.005, url_char_count 0.004, keyword_token_count 0.003. Nothing else exceeds 0.001. Position is the one meaningful signal.
 
+**Position is the strongest simple signal, and part of it is a client effect.**
+
+Pages with average position worse than 12: 1,398 pages with decline rate 0.706 vs base 0.49.
+Ranking by "worst position first" beats the forest at the top of the list: P@20 0.65 vs 0.60, P@100 0.73 vs 0.58, P@500 0.714 vs 0.526.
+One client supplies 15 of the top 20, 82 of the top 100 and 386 of the top 500 by this rule. That client's pages decline at a high rate overall (0.761 on 1,649 pages), its poorly ranked pages decline at 0.771, and its own position AUC is only 0.525.
+Excluding the two largest contributors (chosen by rule, not by hand), pages worse than position 12 still decline more: 397 pages at 0.713 vs a base of 0.464 for the remaining pages.
+Within clients that have at least 100 pages, position AUC is weak but mostly above chance: 13 of 15 clients above 0.5, 12 of them between 0.52 and 0.60, one outlier at 0.818, and two at about 0.50. Six of 15 are at or below 0.53.
+
+**Plain reading.** Pages ranked poorly tend to decline more, and this holds beyond a single client, but within any one client position separates declining from stable pages only weakly. A pooled queue ranked on position will be dominated by whichever clients have many poorly ranked pages.
+
+**Surprises and negative results.**
+
+Neither learned model reliably beat a one-feature rule under client-grouped CV.
+High-click pages are the hardest for the model, consistent with (but not proof of) regression to the mean.
+The apparent strength of active_days_90d across dates disappears within a date.
 
 ## 7. Recommendation
 
-The ranked actions or decisions your output supports, and how a FlyRank editor would use them
-tomorrow. State your confidence and the limits explicitly.
+-Start from pages with average position worse than about 12 and at least 10 clicks in the last 30 days.
+-Rank within each client so one large client does not fill the queue.
+-Show reason codes (position band, impressions level, page age) and let the reviewer choose refresh    /expand / protect / prune / monitor.
+-Treat very high-click pages with caution. The model is weakest there.
+
+**Confidence:** low to moderate. The lift over simple rules is small, measured on one decision date with about 15-day windows, on pages with at least 10 clicks.
+
+**Limits.**
+
+Decision-support only. Nothing here says a refresh causes recovery, and nothing is claimed about Google's ranking algorithm.
+Valid only for the same data slice, window length and metrics. Re-validate if the content mix, client mix or objective changes.
+No automation. Low-confidence picks need manual review.
+
+**Next steps.**
+
+Rebuild features from the full daily fact table for long history and many as-of dates.
+Add a time-aware split with an embargo.
+Add bootstrap intervals (resampling clients) to every headline number.
+Re-test the position rule against the best simple one-feature rule on that split.
 
 ## 8. Reproducibility
 
-The exact commands to re-run everything from a fresh clone, your random seeds, and your
-environment (`pip freeze` highlights or `requirements.txt` deltas).
+**Order of notebooks.** w03_data_contract → w03_feature_leakage_check (builds and caches features.parquet) → w04_baseline_score → w05_model.
 
----
+**Environment.** Python 3.13.16, scikit-learn 1.6.1, pandas 2.2.3, plus duckdb, huggingface_hub, pyarrow, matplotlib.
 
-> **Claims checklist before submitting:** observed / measured / directional / decision-support
-> **Metrics vs. base rate:** report your task's base rate (majority-class %) next to any
-> precision@K or accuracy — a high score can just be a high base rate. AUC / lift over
-> baseline are the honest discrimination numbers.
-> language everywhere · no causal claims without an experiment or causal design · no
-> "predicted Google's algorithm" · no client-identifying details · numbers in this report
-> match a fresh re-run.
+**Data access.** The warehouse is read through DuckDB from hf://datasets/FlyRank/internship-warehouse. Provide your token as a Colab Secret named HF_TOKEN (or the HF_TOKEN environment variable). Never paste it into a notebook.
+
+**Seeds.** SEED = 0 everywhere (random_state=0, GroupKFold is deterministic, permutation importance random_state=0).
+
+**Key constants.** LOOKBACK_DAYS=90, BASELINE_DAYS=30, FUTURE_DAYS=30, as-of date 2026-06-15, 15 past and 15 future days, ratio 0.7, MIN_CLICKS=10.
+
+**Re-run.**
+pip install duckdb huggingface_hub pyarrow scikit-learn==1.6.1 pandas==2.2.3 matplotlib
+set HF_TOKEN, then run the notebooks in the order above (Runtime -> Run all)
