@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capstone Report — Refresh / Content Opportunity Scoring</title>
+<style>
+  :root { --fg:#1c1f24; --muted:#5b6370; --bg:#ffffff; --line:#dde1e7; --accent:#2d6fdc; --soft:#f5f7fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg:#e8eaed; --muted:#a0a7b3; --bg:#14171c; --line:#2c323b; --accent:#6ea1ff; --soft:#1c2027; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:17px/1.65 Georgia, "Times New Roman", serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 40px 20px 80px; }
+  h1 { font-size: 2rem; line-height:1.25; margin: 0 0 .5rem; font-family: system-ui, sans-serif; }
+  h2 { font-size: 1.4rem; margin: 2.6rem 0 .8rem; padding-top:1rem; border-top:1px solid var(--line);
+       font-family: system-ui, sans-serif; }
+  p, li { margin: .6rem 0; }
+  ul, ol { padding-left: 1.4rem; }
+  code { font: .88em/1.4 ui-monospace, Menlo, Consolas, monospace; background:var(--soft);
+         padding: .1em .35em; border-radius:4px; word-break: break-word; }
+  pre { background:var(--soft); border:1px solid var(--line); border-radius:6px; padding:12px 14px; overflow-x:auto; }
+  pre code { background:none; padding:0; }
+  .meta { list-style:none; padding:0; color:var(--muted); font-family: system-ui, sans-serif; font-size:.95rem; }
+  .meta li { margin:.15rem 0; }
+  .tablewrap { overflow-x:auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width:100%; font: .92rem/1.4 system-ui, sans-serif; }
+  th, td { border-bottom:1px solid var(--line); padding:.45rem .6rem; text-align:left; vertical-align:top; }
+  th { background:var(--soft); }
+  td.n, th.n { text-align:right; font-variant-numeric: tabular-nums; }
+  figure { margin: 1.6rem 0; }
+  figure img { max-width:100%; height:auto; display:block; margin:0 auto; border:1px solid var(--line);
+               border-radius:6px; background:#fff; }
+  figcaption { font: .88rem/1.45 system-ui, sans-serif; color:var(--muted); margin-top:.5rem; text-align:center; }
+  .note { border-left:4px solid var(--accent); background:var(--soft); padding:.2rem 1rem; margin:1rem 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Capstone Report — Refresh / Content Opportunity Scoring</h1>
+<ul class="meta">
+  <li><strong>Author:</strong> Ritashree Mukherjee</li>
+  <li><strong>Lane:</strong> Refresh / Content Opportunity Scoring</li>
+  <li><strong>Repo:</strong> Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability</li>
+  <li><strong>Date:</strong> 1st November, 2026</li>
+</ul>
+
+<h2>1. Problem framing</h2>
+<p><strong>Decision supported.</strong> Which pages a content/SEO reviewer opens first. FlyRank clients have far more indexed pages than review hours, so the real question is "which handful is worth the next hour?", not "is this page bad?".</p>
+<p><strong>Unit of analysis.</strong> One row = one page (<code>client_hash_id</code>, <code>content_hash_id</code>) at one as-of date. Features look back from the as-of date. The label looks forward 30 days.</p>
+<p><strong>Output.</strong> A ranked review queue: priority score, suggested action (refresh / expand / protect / prune / monitor), and reason codes a human can sanity-check. A person stays in the loop for every page.</p>
+<p><strong>Cost of a wrong call.</strong></p>
+<ul>
+  <li><em>False positive:</em> a reviewer spends 15–30 minutes on a page that was fine. This is annoying and burns scarce reviewer time, but it is not dangerous.</li>
+  <li><em>False negative:</em> a genuinely declining, high-demand page never surfaces and keeps losing clicks unnoticed.</li>
+  <li>The queue is capacity-limited (a reviewer works the top 20–100), so precision at the top of the list matters more than overall accuracy. AUC is reported as the honest discrimination number.</li>
+</ul>
+
+<h2>2. Data safety</h2>
+<p><strong>Data used.</strong> FlyRank warehouse release: <code>dim_content</code> (519,606 rows, one per client × content item), <code>dim_clients</code>, and <code>fact_content_daily_performance_sample</code> (11.7M rows, 2026-06-01 to 2026-06-30). The full daily fact table (78.8M rows, 70 clients, 2025-01-27 to 2026-06-30) was profiled for the data contract but not used for the modelling features.</p>
+<p><strong>Feature table.</strong> <code>features.parquet</code>: 156,778 rows × 50 columns, three as-of dates (2026-06-01, 06-15, 06-29).</p>
+<p><strong>Deliberately excluded (and why).</strong></p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Field</th><th>Why excluded</th></tr></thead>
+  <tbody>
+    <tr><td><code>trend_direction</code>, <code>trend_pct</code> (starter CSV)</td><td>Label-derived, same-window. A model recovers the rule that made the label.</td></tr>
+    <tr><td><code>clicks_future30</code>, <code>y_rate</code>, <code>is_declining</code></td><td>Label or future window. Used only to build the target.</td></tr>
+    <tr><td><code>client_hash_id</code>, <code>content_hash_id</code>, <code>as_of_date</code></td><td>IDs and dates are for grouping and filtering only, never features.</td></tr>
+    <tr><td><code>provider_used</code>, <code>model_used</code></td><td>Record decisions the content-generation system already made (post-decision information).</td></tr>
+    <tr><td><code>last_optimized_date</code>, <code>content_updated_date</code>, <code>optimization_eligible_date</code>, <code>is_published</code>, <code>is_deleted</code></td><td>Current-state snapshots. Historical availability is not reconstructed.</td></tr>
+  </tbody>
+</table></div>
+
+<p><strong>Leakage tests run (W03, W06).</strong></p>
+<ul>
+  <li>Future-window test: adding <code>clicks_future30</code> on purpose pushed AUC to 0.999 (sampled run) and to 1.000 in the W06 harness. This confirms the harness detects leakage.</li>
+  <li>Split honesty: random vs client-grouped CV (Section 5).</li>
+  <li>Date-proxy check: see below. This was the most important finding.</li>
+</ul>
+
+<p><strong>Date-proxy artifact (negative result).</strong> The first clean-looking model scored AUC about 0.92. Permutation importance showed one feature, <code>active_days_90d</code>, carrying nearly all of it (about 0.36 AUC drop, versus less than 0.01 for the next features). That column mostly encodes which as-of date a row comes from, and the label base rate depends on the date:</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>as_of_date</th><th class="n">rows</th><th class="n">label base rate</th></tr></thead>
+  <tbody>
+    <tr><td>2026-06-01</td><td class="n">17,992</td><td class="n">0.065</td></tr>
+    <tr><td>2026-06-15</td><td class="n">62,550</td><td class="n">0.585</td></tr>
+    <tr><td>2026-06-29</td><td class="n">76,236</td><td class="n">0.990</td></tr>
+  </tbody>
+</table></div>
+
+<figure>
+  <img src="img/fig1_base_rate_by_date.png" alt="Bar chart: label base rate by decision date, 0.065, 0.585 and 0.990">
+  <figcaption>Figure 1. Label base rate by decision date (W05 output).</figcaption>
+</figure>
+
+<p>The sample starts on 06-01, so the 06-01 row has almost no usable prior window and the 06-29 row has only one future day. <code>active_days_90d</code> has pooled AUC 0.881 but only 0.50–0.54 within a single date. Fix: model one as-of date (2026-06-15) with a rate-based label.</p>
+
+<figure>
+  <img src="img/fig2_date_proxy_auc.png" alt="Bar chart: AUC of active_days_90d pooled 0.881 versus within-date 0.500, 0.506, 0.538">
+  <figcaption>Figure 2. AUC of <code>active_days_90d</code>, pooled and within each decision date (W05 output).</figcaption>
+</figure>
+
+<h2>3. Baseline</h2>
+<p><strong>Rule (W04).</strong> Score = number of flags fired:</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Flag</th><th>Condition</th></tr></thead>
+  <tbody>
+    <tr><td>low visibility</td><td><code>impressions_last30</code> &lt; 500</td></tr>
+    <tr><td>impression decline</td><td><code>impressions_last30 / impressions_prev30</code> &lt; 0.80</td></tr>
+    <tr><td>stale</td><td><code>content_age_days_at_as_of</code> ≥ 180</td></tr>
+  </tbody>
+</table></div>
+<p>Ties are broken by lowest impressions. Reason codes: <code>reason_low_visibility</code>, <code>reason_impression_decline</code>, <code>reason_stale</code>.</p>
+<p><strong>Honest caveats about this baseline.</strong></p>
+<ul>
+  <li><code>impressions_prev30</code> is 100% missing at 2026-06-15 because the sample starts 06-01. Flag 2 therefore never fires, and the rule is effectively two flags.</li>
+  <li>The W04 top-50 are all score 2 with 1 impression and 1 click, so the queue is driven by ties. Several pages repeat across dates. The "confidence: High" note in the W04 top-20 review is boilerplate and should not be cited.</li>
+  <li>A fair second baseline is the single feature <code>-impressions_last30</code>. It is reported next to the rule in Section 5.</li>
+</ul>
+
+<h2>4. Model / analysis</h2>
+<p><strong>Task type.</strong> Ranking/scoring. A binary classifier is trained and its predicted probability is the priority score. It is judged by AUC and precision@K, not accuracy.</p>
+<p><strong>Models.</strong> Random Forest (300 trees, <code>min_samples_leaf=20</code>, constant fill −1) and Logistic Regression (median impute + indicators, standard scaling). Seed = 0.</p>
+<p><strong>Target (one sentence).</strong> <code>y_rate = 1</code> if average daily clicks over the 15 days after 2026-06-15 are below 0.70 × average daily clicks over the 15 days before it, restricted to pages with <code>clicks_last30 ≥ 10</code> (n = 10,436).</p>
+<p><strong>Why the filter.</strong> Rate-based labels are mostly noise on pages with very few clicks.</p>
+<p><strong>Label sensitivity.</strong> Base rate is 0.386 at ratio 0.6, 0.490 at 0.7, and 0.578 at 0.8, so the label depends on the threshold.</p>
+<p><strong>Features (about 43–45).</strong></p>
+<ul>
+  <li>Search: <code>impressions_90d</code>, <code>impressions_last30</code>, <code>clicks_last30</code>, <code>ctr_last30</code>, <code>avg_position_last30</code>, <code>ga4_sessions_last30</code>, <code>active_days_90d</code></li>
+  <li>Content metadata: <code>search_volume</code>, <code>competition</code>, <code>cpc</code>, <code>backlinks</code>, <code>category_count</code>, <code>keyword_char_count</code>, <code>keyword_token_count</code>, <code>url_char_count</code>, <code>content_age_days_at_as_of</code></li>
+  <li>One-hot: <code>content_type</code>, <code>competition_level</code>, <code>main_intent</code> (with explicit UNKNOWN categories)</li>
+  <li><code>has_*</code> missingness flags</li>
+</ul>
+<p><strong>Left out on purpose.</strong> Everything in the Section 2 table, plus all-NaN columns (<code>impressions_prev30</code>, <code>clicks_prev30</code>).</p>
+<p><strong>Known redundancy.</strong> At 2026-06-15, <code>impressions_90d == impressions_last30</code> for more than 99% of rows (the sample only reaches back to 06-01). Several <code>has_*</code> flags duplicate each other. The effective feature set is a roughly 15-day window.</p>
+
+<h2>5. Evaluation</h2>
+<p><strong>Split.</strong> One as-of date (2026-06-15), 5-fold <code>GroupKFold</code> by <code>client_hash_id</code>, fold assignments shared by every method. Pages from one client share traffic patterns, so a random split would let the model learn the client.</p>
+<p><strong>Why not time-aware.</strong> Only three as-of dates exist. 06-01 has no prior window and 06-29 has no future window. A time-aware split with an embargo needs the full daily table.</p>
+<p><strong>Models vs baselines, same rows and folds (pooled out-of-fold, base rate 0.49).</strong></p>
+
+<figure>
+  <img src="img/fig3_models_vs_baselines.png" alt="Two bar charts: pooled out-of-fold AUC and precision at 100 for the baselines, Logistic Regression and Random Forest">
+  <figcaption>Figure 3. Pooled out-of-fold AUC and P@100 for each method (W05 output). Dashed lines: random AUC 0.5 and base rate 0.49; shaded band is ±1 SE of the base rate.</figcaption>
+</figure>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Score</th><th class="n">AUC</th><th class="n">P@20</th><th class="n">P@50</th><th class="n">P@100</th></tr></thead>
+  <tbody>
+    <tr><td>Random (base rate)</td><td class="n">0.500</td><td class="n">0.49</td><td class="n">0.49</td><td class="n">0.49</td></tr>
+    <tr><td>Baseline rule (tie-break: low impressions)</td><td class="n">0.570</td><td class="n">0.65</td><td class="n">0.70</td><td class="n">0.64</td></tr>
+    <tr><td>Baseline rule (no tie-break)</td><td class="n">0.521</td><td class="n">0.70</td><td class="n">0.70</td><td class="n">0.56</td></tr>
+    <tr><td>Single feature <code>-impressions_last30</code></td><td class="n">0.595</td><td class="n">0.70</td><td class="n">0.64</td><td class="n">0.63</td></tr>
+    <tr><td>Logistic Regression</td><td class="n">0.518</td><td class="n">0.80</td><td class="n">0.70</td><td class="n">0.66</td></tr>
+    <tr><td>Random Forest</td><td class="n">0.520</td><td class="n">0.60</td><td class="n">0.60</td><td class="n">0.58</td></tr>
+  </tbody>
+</table></div>
+
+<p>The standard error of P@100 at p ≈ 0.6 is about 0.049, so the P@K differences between rows are within noise. All methods beat the 0.49 base rate at the top of the list except the forest at P@50 and P@100, which is only a few points above it.</p>
+
+<div class="tablewrap"><table>
+  <thead><tr><th>Model</th><th class="n">Fold 1</th><th class="n">Fold 2</th><th class="n">Fold 3</th><th class="n">Fold 4</th><th class="n">Fold 5</th><th class="n">Mean</th></tr></thead>
+  <tbody>
+    <tr><td>Random Forest</td><td class="n">0.552</td><td class="n">0.559</td><td class="n">0.655</td><td class="n">0.593</td><td class="n">0.620</td><td class="n">0.596</td></tr>
+    <tr><td>Logistic Regression</td><td class="n">0.554</td><td class="n">0.540</td><td class="n">0.633</td><td class="n">0.596</td><td class="n">0.572</td><td class="n">0.579</td></tr>
+  </tbody>
+</table></div>
+
+<p>Per-fold AUCs are around 0.55–0.66, but pooled out-of-fold AUC is only 0.52. The score scale differs between folds, so pooling mixes folds that are individually informative. The honest summary is "weak discrimination, roughly 0.52–0.60 depending on how it is measured". The single feature <code>-impressions_last30</code> (pooled AUC 0.595) is as good as or better than either model on this metric.</p>
+
+<p><strong>Error analysis (Random Forest, out-of-fold, 2026-06-15).</strong></p>
+<p>By <code>clicks_last30</code> bucket:</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Bucket</th><th class="n">n</th><th class="n">actual decline</th><th class="n">mean predicted</th><th class="n">AUC</th></tr></thead>
+  <tbody>
+    <tr><td>10–20</td><td class="n">6,148</td><td class="n">0.524</td><td class="n">0.505</td><td class="n">0.512</td></tr>
+    <tr><td>20–50</td><td class="n">3,187</td><td class="n">0.468</td><td class="n">0.456</td><td class="n">0.494</td></tr>
+    <tr><td>50–200</td><td class="n">1,006</td><td class="n">0.365</td><td class="n">0.395</td><td class="n">0.387</td></tr>
+    <tr><td>&gt; 200</td><td class="n">95</td><td class="n">0.337</td><td class="n">0.395</td><td class="n">0.312</td></tr>
+  </tbody>
+</table></div>
+<p>By <code>avg_position_last30</code>:</p>
+<div class="tablewrap"><table>
+  <thead><tr><th>Bucket</th><th class="n">n</th><th class="n">actual decline</th><th class="n">mean predicted</th><th class="n">AUC</th></tr></thead>
+  <tbody>
+    <tr><td>0–3</td><td class="n">347</td><td class="n">0.349</td><td class="n">0.432</td><td class="n">0.586</td></tr>
+    <tr><td>3–7</td><td class="n">5,988</td><td class="n">0.421</td><td class="n">0.451</td><td class="n">0.510</td></tr>
+    <tr><td>7–12</td><td class="n">2,703</td><td class="n">0.549</td><td class="n">0.518</td><td class="n">0.439</td></tr>
+    <tr><td>12–20</td><td class="n">904</td><td class="n">0.701</td><td class="n">0.553</td><td class="n">0.424</td></tr>
+    <tr><td>20–100</td><td class="n">494</td><td class="n">0.715</td><td class="n">0.489</td><td class="n">0.443</td></tr>
+  </tbody>
+</table></div>
+
+<figure>
+  <img src="img/fig6_position_actual_vs_predicted.png" alt="Bar chart: actual decline rate versus mean model prediction by average position bucket">
+  <figcaption>Figure 4. Actual decline rate vs mean Random Forest prediction, by average-position bucket (W05 output).</figcaption>
+</figure>
+
+<ul>
+  <li>The model is worse than chance inside the high-click buckets (AUC below 0.5), and inside the poor-position buckets it under-predicts decline (0.70 actual vs 0.55 predicted at positions 12–20).</li>
+  <li>Confident misses were young pages (27–38 days old) with good positions (about 2.5–5.8) that still declined. Confident false alarms were pages around position 11–12 that held up.</li>
+  <li>Mean-reversion check: inside the 50–200 and &gt;200 click buckets, raw <code>clicks_last30</code> has AUC 0.494 and 0.509 for the label, so there is no clear within-bucket signal either way.</li>
+</ul>
+
+<h2>6. Interpretation</h2>
+<p><strong>What the model leans on.</strong> Permutation importance (held-out folds, AUC drop): <code>avg_position_last30</code> 0.034, <code>impressions_last30</code> 0.018, <code>impressions_90d</code> 0.017 (a near-duplicate of the previous column), <code>ga4_sessions_last30</code> 0.006, <code>ctr_last30</code> 0.005, <code>url_char_count</code> 0.004, <code>keyword_token_count</code> 0.003. Nothing else exceeds 0.001. Position is the one meaningful signal.</p>
+<p><strong>Position is the strongest simple signal, and part of it is a client effect.</strong></p>
+<ul>
+  <li>Pages with average position worse than 12: 1,398 pages with decline rate 0.706 vs base 0.49.</li>
+  <li>Ranking by "worst position first" beats the forest at the top of the list: P@20 0.65 vs 0.60, P@100 0.73 vs 0.58, P@500 0.714 vs 0.526.</li>
+  <li>One client supplies 15 of the top 20, 82 of the top 100 and 386 of the top 500 by this rule. That client's pages decline at a high rate overall (0.761 on 1,649 pages), its poorly ranked pages decline at 0.771, and its own position AUC is only 0.525.</li>
+  <li>Excluding the two largest contributors (chosen by rule, not by hand), pages worse than position 12 still decline more: 397 pages at 0.713 vs a base of 0.464 for the remaining pages.</li>
+  <li>Within clients that have at least 100 pages, position AUC is weak but mostly above chance: 13 of 15 clients above 0.5, 12 of them between 0.52 and 0.60, one outlier at 0.818, and two at about 0.50. Six of 15 are at or below 0.53.</li>
+</ul>
+
+<figure>
+  <img src="img/fig7_position_auc_by_client.png" alt="Dot plot: AUC of average position within each of 15 clients, most slightly above 0.5">
+  <figcaption>Figure 5. AUC of average position within each client with at least 100 pages (W05 output; client labels anonymised).</figcaption>
+</figure>
+
+<p><strong>Plain reading.</strong> Pages ranked poorly tend to decline more, and this holds beyond a single client, but within any one client position separates declining from stable pages only weakly. A pooled queue ranked on position will be dominated by whichever clients have many poorly ranked pages.</p>
+<p><strong>Surprises and negative results.</strong></p>
+<ul>
+  <li>Neither learned model reliably beat a one-feature rule under client-grouped CV.</li>
+  <li>High-click pages are the hardest for the model, consistent with (but not proof of) regression to the mean.</li>
+  <li>The apparent strength of <code>active_days_90d</code> across dates disappears within a date.</li>
+</ul>
+
+<h2>7. Recommendation</h2>
+<ol>
+  <li>Start from pages with average position worse than about 12 and at least 10 clicks in the last 30 days.</li>
+  <li>Rank within each client so one large client does not fill the queue.</li>
+  <li>Show reason codes (position band, impressions level, page age) and let the reviewer choose refresh / expand / protect / prune / monitor.</li>
+  <li>Treat very high-click pages with caution. The model is weakest there.</li>
+</ol>
+<p><strong>Confidence:</strong> low to moderate. The lift over simple rules is small, measured on one decision date with about 15-day windows, on pages with at least 10 clicks.</p>
+<p><strong>Limits.</strong></p>
+<ul>
+  <li>Decision-support only. Nothing here says a refresh causes recovery, and nothing is claimed about Google's ranking algorithm.</li>
+  <li>Valid only for the same data slice, window length and metrics. Re-validate if the content mix, client mix or objective changes.</li>
+  <li>No automation. Low-confidence picks need manual review.</li>
+</ul>
+<p><strong>Next steps.</strong></p>
+<ol>
+  <li>Rebuild features from the full daily fact table for long history and many as-of dates.</li>
+  <li>Add a time-aware split with an embargo.</li>
+  <li>Add bootstrap intervals (resampling clients) to every headline number.</li>
+  <li>Re-test the position rule against the best simple one-feature rule on that split.</li>
+</ol>
+
+<h2>8. Reproducibility</h2>
+<p><strong>Order of notebooks.</strong> <code>w03_data_contract</code> → <code>w03_feature_leakage_check</code> (builds and caches <code>features.parquet</code>) → <code>w04_baseline_score</code> → <code>w05_model</code>.</p>
+<p><strong>Environment.</strong> Python 3.13.16, scikit-learn 1.6.1, pandas 2.2.3, plus <code>duckdb</code>, <code>huggingface_hub</code>, <code>pyarrow</code>, <code>matplotlib</code>.</p>
+<p><strong>Data credits.</strong> The warehouse is read through DuckDB from <code>hf://datasets/FlyRank/internship-warehouse</code>, i.e. the <strong>FlyRank Data Warehouse</strong>. Provide your token as a Colab Secret named <code>HF_TOKEN</code> (or the <code>HF_TOKEN</code> environment variable). Never paste it into a notebook.</p>
+<p><strong>Seeds.</strong> <code>SEED = 0</code> everywhere (<code>random_state=0</code>, <code>GroupKFold</code> is deterministic, permutation importance <code>random_state=0</code>).</p>
+<p><strong>Key constants.</strong> <code>LOOKBACK_DAYS=90</code>, <code>BASELINE_DAYS=30</code>, <code>FUTURE_DAYS=30</code>, as-of date 2026-06-15, 15 past and 15 future days, ratio 0.7, <code>MIN_CLICKS=10</code>.</p>
+<p><strong>Re-run.</strong></p>
+<pre><code>pip install duckdb huggingface_hub pyarrow scikit-learn==1.6.1 pandas==2.2.3 matplotlib
+# set HF_TOKEN, then run the notebooks in the order above (Runtime -> Run all)</code></pre>
+
+</main>
+</body>
+</html>
