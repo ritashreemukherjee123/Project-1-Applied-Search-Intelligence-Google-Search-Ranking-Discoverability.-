@@ -3,7 +3,7 @@
 - **Author:** Ritashree Mukherjee
 - **Lane:** Refresh / Content Opportunity Scoring
 - **Repo:** Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability
-- **Date:** 25th October, 2026
+- **Date:** 1st November, 2026
   
 
 ## 1. Problem framing
@@ -49,6 +49,8 @@ Date-proxy artifact (negative result). The first clean-looking model scored AUC 
 | 2026-06-01 | 17,992 | 0.065 |
 | 2026-06-15 | 62,550 | 0.585 |
 | 2026-06-29 | 76,236 | 0.990 |
+
+![image alt](https://github.com/ritashreemukherjee123/Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability.-/blob/7128e2692ed4c6fbe765171bbe7947ef294cca0e/work/outputs/figures/fig1_base_rate_by_date.png)
 
 The sample starts on 06-01, so the 06-01 row has almost no usable prior window and the 06-29 row has only one future day. active_days_90d has pooled AUC 0.881 but only 0.50–0.54 within a single date. Fix: model one as-of date (2026-06-15) with a rate-based label.
 
