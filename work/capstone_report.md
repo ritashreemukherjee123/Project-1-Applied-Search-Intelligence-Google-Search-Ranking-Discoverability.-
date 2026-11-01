@@ -54,6 +54,8 @@ Date-proxy artifact (negative result). The first clean-looking model scored AUC 
 
 The sample starts on 06-01, so the 06-01 row has almost no usable prior window and the 06-29 row has only one future day. active_days_90d has pooled AUC 0.881 but only 0.50–0.54 within a single date. Fix: model one as-of date (2026-06-15) with a rate-based label.
 
+![image alt](https://github.com/ritashreemukherjee123/Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability.-/blob/959139e493080127e0c6d607d6848e75c0250478/work/outputs/figures/fig2_date_proxy_auc.png)
+
 ## 3. Baseline
 
 **Rule (W04).** Score = number of flags fired:
@@ -103,6 +105,8 @@ Known redundancy. At 2026-06-15, impressions_90d == impressions_last30 for more 
 
 Models vs baselines, same rows and folds (pooled out-of-fold, base rate 0.49).
 
+![image alt](https://github.com/ritashreemukherjee123/Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability.-/blob/959139e493080127e0c6d607d6848e75c0250478/work/outputs/figures/fig3_models_vs_baselines.png)
+
 | Score | AUC | P@20 | P@50 | P@100 |
 | --- | ---: | ---: | ---: | ---: |
 | Random (base rate) | 0.500 | 0.49 | 0.49 | 0.49 |
@@ -142,6 +146,8 @@ By avg_position_last30:
 | 12–20 | 904 | 0.701 | 0.553 | 0.424 |
 | 20–100 | 494 | 0.715 | 0.489 | 0.443 |
 
+![image alt](https://github.com/ritashreemukherjee123/Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability.-/blob/959139e493080127e0c6d607d6848e75c0250478/work/outputs/figures/fig6_position_actual_vs_predicted.png)
+
 The model is worse than chance inside the high-click buckets (AUC below 0.5), and inside the poor-position buckets it under-predicts decline (0.70 actual vs 0.55 predicted at positions 12–20).
 Confident misses were young pages (27–38 days old) with good positions (about 2.5–5.8) that still declined. Confident false alarms were pages around position 11–12 that held up.
 Mean-reversion check: inside the 50–200 and >200 click buckets, raw clicks_last30 has AUC 0.494 and 0.509 for the label, so there is no clear within-bucket signal either way.
@@ -157,6 +163,8 @@ Ranking by "worst position first" beats the forest at the top of the list: P@20 
 One client supplies 15 of the top 20, 82 of the top 100 and 386 of the top 500 by this rule. That client's pages decline at a high rate overall (0.761 on 1,649 pages), its poorly ranked pages decline at 0.771, and its own position AUC is only 0.525.
 Excluding the two largest contributors (chosen by rule, not by hand), pages worse than position 12 still decline more: 397 pages at 0.713 vs a base of 0.464 for the remaining pages.
 Within clients that have at least 100 pages, position AUC is weak but mostly above chance: 13 of 15 clients above 0.5, 12 of them between 0.52 and 0.60, one outlier at 0.818, and two at about 0.50. Six of 15 are at or below 0.53.
+
+![image alt](https://github.com/ritashreemukherjee123/Project-1-Applied-Search-Intelligence-Google-Search-Ranking-Discoverability.-/blob/959139e493080127e0c6d607d6848e75c0250478/work/outputs/figures/fig7_position_auc_by_client.png)
 
 **Plain reading.** Pages ranked poorly tend to decline more, and this holds beyond a single client, but within any one client position separates declining from stable pages only weakly. A pooled queue ranked on position will be dominated by whichever clients have many poorly ranked pages.
 
@@ -194,7 +202,7 @@ Re-test the position rule against the best simple one-feature rule on that split
 
 **Environment.** Python 3.13.16, scikit-learn 1.6.1, pandas 2.2.3, plus duckdb, huggingface_hub, pyarrow, matplotlib.
 
-**Data credits.** The warehouse is read through DuckDB from hf://datasets/FlyRank/internship-warehouse. Provide your token as a Colab Secret named HF_TOKEN (or the HF_TOKEN environment variable). Never paste it into a notebook.
+**Data credits.** The warehouse is read through DuckDB from hf://datasets/FlyRank/internship-warehouse ,i.e,**(Flyrank Data Warehouse)**. Provide your token as a Colab Secret named HF_TOKEN (or the HF_TOKEN environment variable). Never paste it into a notebook.
 
 **Seeds.** SEED = 0 everywhere (random_state=0, GroupKFold is deterministic, permutation importance random_state=0).
 
